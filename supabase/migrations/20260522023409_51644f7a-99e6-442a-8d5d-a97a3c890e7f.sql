@@ -1,0 +1,1 @@
+ALTER TABLE public.products ADD COLUMN gluten_free boolean NOT NULL DEFAULT false;
