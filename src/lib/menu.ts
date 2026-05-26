@@ -25,6 +25,7 @@ export type Marker = {
 export type Product = {
   id: string;
   category_id: string;
+  company_id?: string;
   sort_order: number;
   active: boolean;
   price: number | null;
@@ -73,35 +74,74 @@ export type ThemeSettings = {
 };
 
 export async function fetchMenu() {
-  const [cats, prods, marks, links] = await Promise.all([
-    supabase.from("categories").select("*").order("sort_order"),
-    supabase.from("products").select("*").order("sort_order"),
-    supabase.from("markers").select("*").order("sort_order"),
-    supabase.from("product_markers").select("*"),
-  ]);
-  const byProduct = new Map<string, string[]>();
-  for (const l of (links.data ?? []) as { product_id: string; marker_id: string }[]) {
-    const arr = byProduct.get(l.product_id) ?? [];
-    arr.push(l.marker_id);
-    byProduct.set(l.product_id, arr);
+  try {
+    const [cats, prods, links] = await Promise.all([
+      supabase
+        .from("categories")
+        .select("*")
+        .eq("active", true)
+        .order("sort_order"),
+
+      supabase
+        .from("products")
+        .select("*")
+        .eq("active", true)
+        .order("sort_order"),
+
+      supabase
+        .from("product_markers")
+        .select("*"),
+    ]);
+
+    const byProduct = new Map<string, string[]>();
+
+    for (const l of (links.data ?? []) as {
+      product_id: string;
+      marker_id: string;
+    }[]) {
+      const arr = byProduct.get(l.product_id) ?? [];
+      arr.push(l.marker_id);
+      byProduct.set(l.product_id, arr);
+    }
+
+    const products: Product[] = ((prods.data ?? []) as any[]).map(
+      (p) => ({
+        ...p,
+        marker_ids: byProduct.get(p.id) ?? [],
+      })
+    );
+
+    return {
+      categories: (cats.data ?? []) as Category[],
+      products,
+      markers: [],
+    };
+
+  } catch (error) {
+    console.error("Erro ao carregar menu:", error);
+
+    return {
+      categories: [],
+      products: [],
+      markers: [],
+    };
   }
-  const products: Product[] = ((prods.data ?? []) as any[]).map((p) => ({
-    ...p,
-    marker_ids: byProduct.get(p.id) ?? [],
-  }));
-  return {
-    categories: (cats.data ?? []) as Category[],
-    products,
-    markers: (marks.data ?? []) as Marker[],
-  };
 }
 
-const COMPANY_PUBLIC_COLS = "id, fantasy_name, logo_url, instagram, site, is_primary, active, sort_order, created_at, updated_at";
+const COMPANY_PUBLIC_COLS =
+"id, fantasy_name, logo_url, instagram, site, is_primary, active, sort_order, created_at, updated_at";
 
-export type PublicCompany = Omit<Company, "legal_name" | "cnpj" | "address">;
+export type PublicCompany = Omit<
+Company,
+"legal_name" | "cnpj" | "address"
+>;
 
 export async function fetchCompanies() {
-  const { data } = await supabase.from("companies").select(COMPANY_PUBLIC_COLS).order("sort_order");
+  const { data } = await supabase
+    .from("companies")
+    .select(COMPANY_PUBLIC_COLS)
+    .order("sort_order");
+
   return (data ?? []) as PublicCompany[];
 }
 
@@ -112,10 +152,16 @@ export async function fetchPrimaryCompany() {
     .eq("is_primary", true)
     .eq("active", true)
     .maybeSingle();
+
   return (data ?? null) as PublicCompany | null;
 }
 
 export async function fetchTheme() {
-  const { data } = await supabase.from("theme_settings").select("*").limit(1).maybeSingle();
+  const { data } = await supabase
+    .from("theme_settings")
+    .select("*")
+    .limit(1)
+    .maybeSingle();
+
   return (data ?? null) as ThemeSettings | null;
 }
